@@ -1,0 +1,46 @@
+name: security
+
+on:
+  push:                  # elke push, alle branches
+  workflow_dispatch:     # manueel starten
+
+permissions:
+  contents: read         # minimaal; jobs vragen niets extra
+
+jobs:
+  sca:                   # DSOMM: Software Composition Analysis (server side)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL      # jouw definitie van "kritiek"
+          exit-code: '1'               # rood bij een bevinding
+          trivyignores: .trivyignore   # aanvaarde bevindingen, elk met reden
+
+  sast:                  # DSOMM: Static analysis for important server/client side components
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3 # 1.180.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: semgrep scan --config p/csharp --config p/javascript --severity ERROR --error --metrics off
+
+  secrets:               # DSOMM: Test for stored secrets in code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0               # volledige geschiedenis: ook oude commits scannen
+          persist-credentials: false
+      - run: |
+          docker run --rm -v "$PWD:/repo" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+            ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --verbose --exit-code 1
