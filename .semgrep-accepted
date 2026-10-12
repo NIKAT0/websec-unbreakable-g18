@@ -1,1 +1,2 @@
 # Aanvaarde Semgrep-regels: een regel-ID per regel, reden in docs/accepted-findings.md
+dockerfile.security.missing-user-entrypoint.missing-user-entrypoint

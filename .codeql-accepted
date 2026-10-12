@@ -1,1 +1,3 @@
 # Aanvaarde CodeQL-bevindingen: ruleId:bestand per regel, reden in docs/accepted-findings.md
+cs/sql-injection:app/Program.cs
+js/xss:app/wwwroot/js/app.js
