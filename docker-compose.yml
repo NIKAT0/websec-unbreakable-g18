@@ -1,13 +1,22 @@
+# Unbreakable achter de WAF (BunkerWeb 1.6.15).
+# Enkel BunkerWeb staat open naar buiten (80 en 443). De app en de databank hebben geen ports.
+
+x-bw-api-env: &bw-api-env
+  # Enkel de scheduler (netwerk bw-universe) mag de API van BunkerWeb aanspreken
+  API_WHITELIST_IP: "127.0.0.0/8 10.20.30.0/24"
+
 services:
   app:
     build: ./app
-    ports:
-      - "127.0.0.1:8080:8080"     #- "8080:8080"
+    # Geen ports: de app is enkel bereikbaar via BunkerWeb (netwerk bw-services)
     environment:
       ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=Unbr3akable!2026"
     depends_on:
       - db
     restart: unless-stopped
+    networks:
+      - bw-services
+      - app-db
 
   db:
     image: postgres:17
@@ -18,6 +27,55 @@ services:
     volumes:
       - dbdata:/var/lib/postgresql/data
     restart: unless-stopped
+    networks:
+      - app-db
+
+  bunkerweb:
+    image: bunkerity/bunkerweb:1.6.15@sha256:1b96f672660cc32bfae93604ac297371222dc9039b2b09b8eee5e40ba9d35c35
+    ports:
+      - "80:8080/tcp"
+      - "443:8443/tcp"
+    environment:
+      <<: *bw-api-env
+    restart: unless-stopped
+    networks:
+      - bw-universe
+      - bw-services
+
+  bw-scheduler:
+    image: bunkerity/bunkerweb-scheduler:1.6.15@sha256:321867d8db44d3a4ca1edfa3ff2c5b50163d3ebd5c67ed0d107161319d5ee860
+    depends_on:
+      - bunkerweb
+    environment:
+      <<: *bw-api-env
+      BUNKERWEB_INSTANCES: "bunkerweb"
+      SERVER_NAME: "g18.ipv6.thelastgym.be"
+      # Reverse proxy naar de app
+      USE_REVERSE_PROXY: "yes"
+      REVERSE_PROXY_HOST: "http://app:8080"
+      REVERSE_PROXY_URL: "/"
+      # HTTPS via Let's Encrypt: eerst staging (gedeelde limiet), daarna "no"
+      AUTO_LETS_ENCRYPT: "yes"
+      USE_LETS_ENCRYPT_STAGING: "yes"
+      # BunkerWeb ziet elke bezoeker als het IP van de Docker-gateway (IPv6 via docker-proxy).
+      # Een ban zou dus iedereen treffen: bad behavior uit (zie threat model).
+      USE_BAD_BEHAVIOR: "no"
+    volumes:
+      - bw-storage:/data   # databank van BunkerWeb, met de certificaten
+    restart: unless-stopped
+    networks:
+      - bw-universe
 
 volumes:
   dbdata:
+  bw-storage:
+
+networks:
+  # De databank is enkel bereikbaar voor de app en heeft geen internet
+  app-db:
+    internal: true
+  bw-universe:
+    ipam:
+      config:
+        - subnet: 10.20.30.0/24
+  bw-services:
