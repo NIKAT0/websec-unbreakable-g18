@@ -1,3 +1,13 @@
+# Security-pipeline (opdracht 2, stap 2): bij elke push SCA, SAST en secret scanning.
+#
+# Kritiek (= de pipeline faalt), eigen keuze:
+#   SCA     : severity HIGH of CRITICAL
+#   SAST    : Semgrep severity ERROR · CodeQL security-severity >= 7.0
+#   Secrets : elk gevonden geheim
+#
+# Aanvaarde bevindingen staan in een lijst per tool, met de reden in docs/accepted-findings.md:
+#   .trivyignore · .semgrep-accepted · .codeql-accepted · .gitleaksignore
+
 name: security
 
 on:
@@ -5,11 +15,12 @@ on:
   workflow_dispatch:     # manueel starten
 
 permissions:
-  contents: read         # minimaal; jobs vragen niets extra
+  contents: read         # minimaal; enkel de codeql-job krijgt er iets bij
 
 jobs:
-  sca:                   # DSOMM: Software Composition Analysis (server side)
-    runs-on: ubuntu-latest
+  # SCA · DSOMM: Software Composition Analysis (server side) · Static depth for applications, niveau 2
+  sca-server:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -18,22 +29,80 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
-          severity: HIGH,CRITICAL      # jouw definitie van "kritiek"
-          exit-code: '1'               # rood bij een bevinding
-          trivyignores: .trivyignore   # aanvaarde bevindingen, elk met reden
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore
 
-  sast:                  # DSOMM: Static analysis for important server/client side components
-    runs-on: ubuntu-latest
+  # SCA · DSOMM: Software Composition Analysis (client side) · Static depth for applications, niveau 3
+  # Trivy ziet jQuery en Bootstrap in wwwroot/lib niet (geen package.json), retire.js wel.
+  sca-client:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: npx --yes retire@6.1.0 --path app/wwwroot/lib --severity high
+
+  # SAST · DSOMM: Static analysis for important server/client side components · Static depth for applications, niveau 3
+  sast-semgrep:
+    runs-on: ubuntu-24.04
     container:
       image: semgrep/semgrep@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3 # 1.180.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: semgrep scan --config p/csharp --config p/javascript --severity ERROR --error --metrics off
+      - name: Semgrep (aanvaarde regels uit .semgrep-accepted worden overgeslagen)
+        run: |
+          EXCL=$(tr -d '\r' < .semgrep-accepted | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sed 's/^/--exclude-rule /' | tr '\n' ' ' || true)
+          echo "Aanvaard: ${EXCL:-niets}"
+          semgrep scan --config p/default --config p/csharp --config p/javascript \
+            --severity ERROR --error --metrics off $EXCL
 
-  secrets:               # DSOMM: Test for stored secrets in code
-    runs-on: ubuntu-latest
+  # SAST · zelfde DSOMM-activiteit, tweede tool: CodeQL volgt de invoer door de code (vindt wat Semgrep mist)
+  sast-codeql:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write       # enkel deze job mag resultaten naar het Security-tabblad sturen
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [csharp, javascript-typescript]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - app/wwwroot/lib    # bibliotheken van derden: dat is werk voor SCA (retire.js)
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          output: sarif
+      # CodeQL zelf laat de pipeline niet falen (enkel meldingen in het Security-tabblad).
+      # Deze stap doet dat wel: elke bevinding >= 7.0 die niet in .codeql-accepted staat.
+      - name: Faal op nieuwe kritieke bevindingen
+        run: |
+          jq -r --rawfile acc .codeql-accepted '
+            .runs[]
+            | ([.tool.driver.rules[]?, .tool.extensions[]?.rules[]?]
+               | map({(.id): (.properties["security-severity"] // "0" | tonumber)}) | add) as $sev
+            | .results[]
+            | select(($sev[.ruleId] // 0) >= 7.0)
+            | "\(.ruleId):\(.locations[0].physicalLocation.artifactLocation.uri)"
+            | select(. as $k | $acc | contains($k) | not)' sarif/*.sarif > nieuw.txt
+          echo "Nieuwe kritieke bevindingen:"
+          cat nieuw.txt
+          test ! -s nieuw.txt
+
+  # Secrets · DSOMM: Test for stored secrets in code · Static depth for infrastructure, niveau 1
+  secrets:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
