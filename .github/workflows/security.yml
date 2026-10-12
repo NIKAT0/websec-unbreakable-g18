@@ -113,3 +113,18 @@ jobs:
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
             ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             git /repo --redact --verbose --exit-code 1
+
+  # Uitrollen · DSOMM: Automated deployment process · Deployment, niveau 1
+  # Enkel na groene scans en enkel bij een push naar main. Geen checkout: op de runner draait geen code uit de repo.
+  deploy:
+    needs: [sca-server, sca-client, sast-semgrep, sast-codeql, secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, g18]
+    concurrency:
+      group: deploy-g18
+      cancel-in-progress: false
+    steps:
+      - name: Uitrollen naar g18 (enkel een commit die op main staat)
+        env:
+          SHA: ${{ github.sha }}
+        run: sudo -n /usr/local/sbin/deploy-unbreakable.sh "$SHA"
