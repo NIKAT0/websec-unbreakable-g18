@@ -56,7 +56,7 @@ services:
       REVERSE_PROXY_URL: "/"
       # HTTPS via Let's Encrypt: eerst staging (gedeelde limiet), daarna "no"
       AUTO_LETS_ENCRYPT: "yes"
-      USE_LETS_ENCRYPT_STAGING: "yes"
+      USE_LETS_ENCRYPT_STAGING: "no"
       # BunkerWeb ziet elke bezoeker als het IP van de Docker-gateway (IPv6 via docker-proxy).
       # Een ban zou dus iedereen treffen: bad behavior uit (zie threat model).
       USE_BAD_BEHAVIOR: "no"
