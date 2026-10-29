@@ -1,7 +1,7 @@
 // De schermen van Unbreakable. Navigeren gebeurt met het deel na # in de URL.
 
 import { api, currentUser, setUser } from './api.js';
-import { normaliseer, controleer, otp } from './crypto.js';
+import { normaliseer, controleer, otp, macData, maakMac, controleerMac } from './crypto.js';
 
 const app = document.getElementById('app');
 
@@ -152,8 +152,10 @@ async function renderMessage(id) {
         <div class="card mb-3"><div class="card-body message-body" id="body"></div></div>
         <div class="form-inline mb-3">
             <input id="key" type="password" class="form-control mr-2" placeholder="Sleutel van lijn ${Number(m.keyLine)}" autocomplete="off" />
+            <input id="hmackey" type="password" class="form-control mr-2" placeholder="HMAC-sleutel" autocomplete="off" />
             <button id="decrypt" class="btn btn-primary">Ontsleutelen</button>
         </div>
+        <div id="integrity"></div>
         <p>
             <button id="delete" class="btn btn-outline-danger">Verwijderen</button>
             <a href="#/inbox" class="btn btn-link">Terug naar je inbox</a>
@@ -161,13 +163,24 @@ async function renderMessage(id) {
 
     document.getElementById('body').textContent = m.body;
 
-    document.getElementById('decrypt').addEventListener('click', () => {
+    document.getElementById('decrypt').addEventListener('click', async () => {
         const sleutel = normaliseer(document.getElementById('key').value);
         const fout = controleer(m.body, sleutel);
         if (fout) {
             alert(fout);
             return;
         }
+        // Eerst de integriteit: een gewijzigd bericht wordt niet ontsleuteld.
+        const integrity = document.getElementById('integrity');
+        const ok = await controleerMac(document.getElementById('hmackey').value, macData(m.keyLine, m.body), m.mac || '');
+        if (!ok) {
+            integrity.className = 'alert alert-danger';
+            integrity.textContent = 'MAC ongeldig: dit bericht is gewijzigd, of de HMAC-sleutel is fout. Het wordt niet ontsleuteld.';
+            document.getElementById('body').textContent = m.body;
+            return;
+        }
+        integrity.className = 'alert alert-success';
+        integrity.textContent = 'MAC geldig: het bericht is niet gewijzigd.';
         document.getElementById('body').textContent = otp(m.body, sleutel, -1).replaceAll('_', ' ');
     });
 
@@ -214,6 +227,10 @@ async function renderNew() {
                         <label for="key">Sleutel (de lijn zelf, 40 tekens)</label>
                         <input id="key" type="password" class="form-control" required autocomplete="off" />
                     </div>
+                    <div class="form-group">
+                        <label for="hmackey">HMAC-sleutel (apart van het codeboek)</label>
+                        <input id="hmackey" type="password" class="form-control" required autocomplete="off" />
+                    </div>
                     <button type="submit" class="btn btn-primary">Versturen</button>
                     <a href="#/inbox" class="btn btn-link">Annuleren</a>
                 </form>
@@ -229,11 +246,14 @@ async function renderNew() {
             alert(fout);
             return;
         }
+        const ciphertext = otp(bericht, sleutel, 1);
+        const keyLine = Number(document.getElementById('keyline').value);
         await api.send({
             recipient: document.getElementById('recipient').value.trim(),
             subject: document.getElementById('subject').value,
-            body: otp(bericht, sleutel, 1),
-            keyLine: Number(document.getElementById('keyline').value),
+            body: ciphertext,
+            keyLine: keyLine,
+            mac: await maakMac(document.getElementById('hmackey').value, macData(keyLine, ciphertext)),
         });
         location.hash = '#/inbox';
     });

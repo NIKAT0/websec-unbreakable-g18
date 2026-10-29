@@ -29,6 +29,10 @@ public class Message
     [Display(Name = "Lijn in het codeboek")]
     public int KeyLine { get; set; }
 
+    [StringLength(64)]
+    [Display(Name = "HMAC-SHA256")]
+    public string Mac { get; set; }
+
     [Display(Name = "Verzonden")]
     public DateTime SentAt { get; set; }
 }
