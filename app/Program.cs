@@ -25,7 +25,6 @@ using (var scope = app.Services.CreateScope())
         try
         {
             context.Database.EnsureCreated();
-            SeedData.Initialize(context);
             break;
         }
         catch (Exception ex) when (attempt < 30)

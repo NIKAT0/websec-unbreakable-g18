@@ -1,6 +1,7 @@
 // De schermen van Unbreakable. Navigeren gebeurt met het deel na # in de URL.
 
 import { api, currentUser, setUser } from './api.js';
+import { normaliseer, controleer, otp } from './crypto.js';
 
 const app = document.getElementById('app');
 
@@ -104,7 +105,7 @@ async function renderInbox(params) {
     const rows = messages.map(m => `
         <tr>
             <td>${escapeHtml(m.sender)}</td>
-            <td><a href="#/bericht/${m.id}">${m.subject}</a></td>
+            <td><a href="#/bericht/${m.id}">${escapeHtml(m.subject)}</a></td>
             <td>${formatDate(m.sentAt)}</td>
         </tr>`).join('');
 
@@ -142,19 +143,33 @@ async function renderMessage(id) {
     const m = await api.message(id);
 
     app.innerHTML = `
-        <h1>${m.subject}</h1>
+        <h1>${escapeHtml(m.subject)}</h1>
         <dl class="row">
             <dt class="col-sm-2">Van</dt><dd class="col-sm-10">${escapeHtml(m.sender)}</dd>
             <dt class="col-sm-2">Aan</dt><dd class="col-sm-10">${escapeHtml(m.recipient)}</dd>
             <dt class="col-sm-2">Verzonden</dt><dd class="col-sm-10">${formatDate(m.sentAt)}</dd>
         </dl>
         <div class="card mb-3"><div class="card-body message-body" id="body"></div></div>
+        <div class="form-inline mb-3">
+            <input id="key" type="password" class="form-control mr-2" placeholder="Sleutel van lijn ${Number(m.keyLine)}" autocomplete="off" />
+            <button id="decrypt" class="btn btn-primary">Ontsleutelen</button>
+        </div>
         <p>
             <button id="delete" class="btn btn-outline-danger">Verwijderen</button>
             <a href="#/inbox" class="btn btn-link">Terug naar je inbox</a>
         </p>`;
 
     document.getElementById('body').textContent = m.body;
+
+    document.getElementById('decrypt').addEventListener('click', () => {
+        const sleutel = normaliseer(document.getElementById('key').value);
+        const fout = controleer(m.body, sleutel);
+        if (fout) {
+            alert(fout);
+            return;
+        }
+        document.getElementById('body').textContent = otp(m.body, sleutel, -1).replaceAll('_', ' ');
+    });
 
     document.getElementById('delete').addEventListener('click', async () => {
         if (confirm('Ben je zeker dat je dit bericht wil verwijderen?')) {
@@ -189,7 +204,15 @@ async function renderNew() {
                     </div>
                     <div class="form-group">
                         <label for="text">Bericht</label>
-                        <textarea id="text" class="form-control" rows="6" required maxlength="2000"></textarea>
+                        <textarea id="text" class="form-control" rows="3" required maxlength="40"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="keyline">Lijn in het codeboek</label>
+                        <input id="keyline" type="number" class="form-control" required min="1" max="50" />
+                    </div>
+                    <div class="form-group">
+                        <label for="key">Sleutel (de lijn zelf, 40 tekens)</label>
+                        <input id="key" type="password" class="form-control" required autocomplete="off" />
                     </div>
                     <button type="submit" class="btn btn-primary">Versturen</button>
                     <a href="#/inbox" class="btn btn-link">Annuleren</a>
@@ -199,10 +222,18 @@ async function renderNew() {
 
     document.getElementById('compose').addEventListener('submit', async (event) => {
         event.preventDefault();
+        const bericht = normaliseer(document.getElementById('text').value);
+        const sleutel = normaliseer(document.getElementById('key').value);
+        const fout = controleer(bericht, sleutel);
+        if (fout) {
+            alert(fout);
+            return;
+        }
         await api.send({
             recipient: document.getElementById('recipient').value.trim(),
             subject: document.getElementById('subject').value,
-            body: document.getElementById('text').value,
+            body: otp(bericht, sleutel, 1),
+            keyLine: Number(document.getElementById('keyline').value),
         });
         location.hash = '#/inbox';
     });

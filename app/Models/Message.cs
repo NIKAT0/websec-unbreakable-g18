@@ -26,6 +26,9 @@ public class Message
     [Display(Name = "Bericht")]
     public string Body { get; set; }
 
+    [Display(Name = "Lijn in het codeboek")]
+    public int KeyLine { get; set; }
+
     [Display(Name = "Verzonden")]
     public DateTime SentAt { get; set; }
 }
