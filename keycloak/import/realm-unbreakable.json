@@ -1,0 +1,84 @@
+{
+  "realm": "unbreakable",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "unbreakable-spa",
+      "name": "Unbreakable SPA",
+      "description": "Public SPA-client, authorization code flow met PKCE (geen client secret).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "https://g18.ipv6.thelastgym.be",
+      "baseUrl": "/",
+      "redirectUris": [
+        "https://g18.ipv6.thelastgym.be/*"
+      ],
+      "webOrigins": [
+        "https://g18.ipv6.thelastgym.be"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://g18.ipv6.thelastgym.be/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-unbreakable-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "unbreakable-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "anna",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "anna@unbreakable.local",
+      "firstName": "Anna",
+      "lastName": "Peeters",
+      "credentials": [
+        { "type": "password", "value": "Unbreakable!23", "temporary": false }
+      ]
+    },
+    {
+      "username": "bram",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bram@unbreakable.local",
+      "firstName": "Bram",
+      "lastName": "Janssens",
+      "credentials": [
+        { "type": "password", "value": "Unbreakable!23", "temporary": false }
+      ]
+    },
+    {
+      "username": "chris",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "chris@unbreakable.local",
+      "firstName": "Chris",
+      "lastName": "De Clercq",
+      "credentials": [
+        { "type": "password", "value": "Unbreakable!23", "temporary": false }
+      ]
+    }
+  ]
+}

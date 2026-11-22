@@ -1,5 +1,5 @@
 # Unbreakable achter de WAF (BunkerWeb 1.6.15).
-# Enkel BunkerWeb staat open naar buiten (80 en 443). De app en de databank hebben geen ports.
+# Enkel BunkerWeb staat open naar buiten (80 en 443). De app, de databank en Keycloak hebben geen ports.
 
 x-bw-api-env: &bw-api-env
   # Enkel de scheduler (netwerk bw-universe) mag de API van BunkerWeb aanspreken
@@ -30,6 +30,47 @@ services:
     networks:
       - app-db
 
+  # Identity provider (OIDC). Draait intern, enkel bereikbaar via BunkerWeb op /auth.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: start --import-realm
+    environment:
+      # Databank (eigen Postgres, los van de app)
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://keycloak-db:5432/keycloak"
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: "K3ycl0ak!2026"
+      # Eerste beheerder (enkel voor de setup; login gebeurt via de realm)
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "Adm1n!Keycloak2026"
+      # Achter BunkerWeb: TLS termineert op de WAF, Keycloak draait op subpad /auth
+      KC_HOSTNAME: "https://g18.ipv6.thelastgym.be/auth"
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      # Realm, client en testgebruikers worden bij de start geïmporteerd
+      - ./keycloak/import:/opt/keycloak/data/import:ro
+    depends_on:
+      - keycloak-db
+    restart: unless-stopped
+    networks:
+      - bw-services
+      - keycloak-net
+
+  keycloak-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: "K3ycl0ak!2026"
+    volumes:
+      - kcdbdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - keycloak-net
+
   bunkerweb:
     image: bunkerity/bunkerweb:1.6.15@sha256:1b96f672660cc32bfae93604ac297371222dc9039b2b09b8eee5e40ba9d35c35
     ports:
@@ -50,10 +91,13 @@ services:
       <<: *bw-api-env
       BUNKERWEB_INSTANCES: "bunkerweb"
       SERVER_NAME: "g18.ipv6.thelastgym.be"
-      # Reverse proxy naar de app
+      # Reverse proxy naar de app (hoofdsite)
       USE_REVERSE_PROXY: "yes"
       REVERSE_PROXY_HOST: "http://app:8080"
       REVERSE_PROXY_URL: "/"
+      # Tweede reverse proxy: /auth naar Keycloak (zelfde pad als KC_HTTP_RELATIVE_PATH)
+      REVERSE_PROXY_HOST_1: "http://keycloak:8080"
+      REVERSE_PROXY_URL_1: "/auth"
       # HTTPS via Let's Encrypt: eerst staging (gedeelde limiet), daarna "no"
       AUTO_LETS_ENCRYPT: "yes"
       USE_LETS_ENCRYPT_STAGING: "no"
@@ -68,11 +112,15 @@ services:
 
 volumes:
   dbdata:
+  kcdbdata:
   bw-storage:
 
 networks:
   # De databank is enkel bereikbaar voor de app en heeft geen internet
   app-db:
+    internal: true
+  # Keycloak en zijn databank, intern
+  keycloak-net:
     internal: true
   bw-universe:
     ipam:
