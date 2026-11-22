@@ -11,8 +11,13 @@ services:
     # Geen ports: de app is enkel bereikbaar via BunkerWeb (netwerk bw-services)
     environment:
       ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=Unbr3akable!2026"
+      # De PDP (OpenFGA): adres, store en model. De app is enkel PEP.
+      OpenFga__ApiUrl: "http://openfga:8080"
+      OpenFga__StoreId: "01M82QE9KT7D57EBDDHJM4CGE3"
+      OpenFga__ModelId: "01M82QFKCVNJJZKGKT6SFTG1HR"
     depends_on:
       - db
+      - openfga
     restart: unless-stopped
     networks:
       - bw-services

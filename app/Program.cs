@@ -2,7 +2,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
+using OpenFga.Sdk.Client;
+using OpenFga.Sdk.Client.Model;
 using System.Security.Claims;
+using Unbreakable;
 using Unbreakable.Data;
 using Unbreakable.Models;
 
@@ -36,6 +39,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// De PDP (OpenFGA). De API is de PEP: ze stelt enkel de vraag, OpenFGA beslist.
+// Adres, store en model komen uit de omgeving (docker-compose), niet hardcoded.
+builder.Services.AddSingleton(new OpenFgaClient(new ClientConfiguration
+{
+    ApiUrl = builder.Configuration["OpenFga:ApiUrl"] ?? "http://openfga:8080",
+    StoreId = builder.Configuration["OpenFga:StoreId"],
+    AuthorizationModelId = builder.Configuration["OpenFga:ModelId"],
+}));
+
 var app = builder.Build();
 
 // Databank aanmaken en vullen met voorbeeldberichten.
@@ -56,6 +68,22 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogWarning("Databank nog niet bereikbaar ({Error}), poging {Attempt}", ex.Message, attempt);
             Thread.Sleep(2000);
+        }
+    }
+
+    // Relaties voor bestaande berichten eenmalig naar de PDP schrijven, zodat ook
+    // de voorbeeldberichten onder de nieuwe autorisatie leesbaar zijn. Idempotent:
+    // bestaat de tuple al (bij een herstart), dan negeren we de fout.
+    var fga = scope.ServiceProvider.GetRequiredService<OpenFgaClient>();
+    foreach (var message in await context.Messages.ToListAsync())
+    {
+        try
+        {
+            await Authz.SchrijfTuples(fga, message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug("Tuple voor bericht {Id} niet geschreven ({Error})", message.Id, ex.Message);
         }
     }
 }
@@ -121,13 +149,24 @@ api.MapGet("/messages/export", async (ClaimsPrincipal principal, UnbreakableCont
     return Results.Text(JsonConvert.SerializeObject(messages, Formatting.Indented), "application/json");
 });
 
-api.MapGet("/messages/{id:int}", async (int id, UnbreakableContext db) =>
+api.MapGet("/messages/{id:int}", async (int id, ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
     var message = await db.Messages.FindAsync(id);
-    return message == null ? Results.NotFound() : Results.Ok(message);
+    if (message == null)
+    {
+        return Results.NotFound();
+    }
+
+    // De PDP beslist of deze gebruiker dit bericht mag lezen (can_read).
+    if (!await Authz.Mag(fga, CurrentUser(principal), "can_read", id))
+    {
+        return Results.Forbid();
+    }
+
+    return Results.Ok(message);
 });
 
-api.MapPost("/messages", async (Message message, ClaimsPrincipal principal, UnbreakableContext db) =>
+api.MapPost("/messages", async (Message message, ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
     // De afzender komt altijd uit het token, niet uit de invoer: je kan je niet voordoen als iemand anders.
     message.Sender = CurrentUser(principal);
@@ -138,10 +177,14 @@ api.MapPost("/messages", async (Message message, ClaimsPrincipal principal, Unbr
     db.Messages.Add(message);
     await db.SaveChangesAsync();
 
+    // De relatie afzender/ontvanger ↔ bericht naar de PDP schrijven, zodat
+    // de autorisatie (lezen/verwijderen) op dit bericht klopt.
+    await Authz.SchrijfTuples(fga, message);
+
     return Results.Created($"/api/messages/{message.Id}", message);
 });
 
-api.MapDelete("/messages/{id:int}", async (int id, UnbreakableContext db) =>
+api.MapDelete("/messages/{id:int}", async (int id, ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
     var message = await db.Messages.FindAsync(id);
     if (message == null)
@@ -149,8 +192,18 @@ api.MapDelete("/messages/{id:int}", async (int id, UnbreakableContext db) =>
         return Results.NotFound();
     }
 
+    // De PDP beslist of deze gebruiker dit bericht mag verwijderen (can_delete).
+    if (!await Authz.Mag(fga, CurrentUser(principal), "can_delete", id))
+    {
+        return Results.Forbid();
+    }
+
     db.Messages.Remove(message);
     await db.SaveChangesAsync();
+
+    // De tuples van dit bericht opruimen: de relatie bestaat niet meer.
+    await Authz.VerwijderTuples(fga, message);
+
     return Results.NoContent();
 });
 

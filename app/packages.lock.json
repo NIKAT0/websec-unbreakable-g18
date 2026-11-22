@@ -28,6 +28,20 @@
           "Npgsql": "10.0.4"
         }
       },
+      "OpenFga.Sdk": {
+        "type": "Direct",
+        "requested": "[0.10.*, )",
+        "resolved": "0.10.5",
+        "contentHash": "cU73LjVKQGyJe0EwvaO2L6aeLFKJGS/1IhdbxbsxPaRG4QBiokVq1mv/wFRvsexjJgaQtRdbOIU3XdnlmRrBdA==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "10.0.14"
+        }
+      },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "HCu9NbiXDh9++j4eRNRHCOiKPw/7I5UEJlFIRaDM3v0+ttZaH8p8rjxSWfNgP2cGv5JAa4EZnmc/nlcUOTFlpA=="
+      },
       "Microsoft.Bcl.Cryptography": {
         "type": "Transitive",
         "resolved": "10.0.2",
