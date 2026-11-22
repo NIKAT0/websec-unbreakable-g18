@@ -48,6 +48,9 @@ services:
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
+      # Frontend-URL's blijven de publieke hostname; backchannel (bv. de API die de
+      # sleutels ophaalt) gebruikt de interne host. Zo hoeft de API niet via de WAF.
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HEALTH_ENABLED: "true"
     volumes:
       # Realm, client en testgebruikers worden bij de start geïmporteerd
@@ -95,6 +98,8 @@ services:
       USE_REVERSE_PROXY: "yes"
       REVERSE_PROXY_HOST: "http://app:8080"
       REVERSE_PROXY_URL: "/"
+      # De app gebruikt DELETE (bericht verwijderen); standaard laat BunkerWeb dat niet toe.
+      ALLOWED_METHODS: "GET|POST|HEAD|DELETE"
       # Tweede reverse proxy: /auth naar Keycloak (zelfde pad als KC_HTTP_RELATIVE_PATH)
       REVERSE_PROXY_HOST_1: "http://keycloak:8080"
       REVERSE_PROXY_URL_1: "/auth"

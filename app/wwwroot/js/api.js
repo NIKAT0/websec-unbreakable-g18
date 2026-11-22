@@ -1,17 +1,16 @@
 // Praat met de API. Alles wat de SPA weet, komt van hier.
+// De identiteit zit niet meer in een header, maar in het access token (Bearer).
 
-const USER_KEY = 'unbreakable_user';
-
-export function currentUser() {
-    return localStorage.getItem(USER_KEY);
-}
-
-export function setUser(name) {
-    localStorage.setItem(USER_KEY, name);
-}
+import { accessToken } from './auth.js';
 
 async function call(method, path, body) {
-    const headers = { 'X-User': currentUser() || '' };
+    const headers = {};
+
+    const token = accessToken();
+    if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
+    }
+
     const options = { method, headers };
 
     if (body !== undefined) {

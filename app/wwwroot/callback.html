@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aanmelden…</title>
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+</head>
+<body>
+    <main class="container py-5 text-center">
+        <p id="status">Bezig met aanmelden…</p>
+    </main>
+
+    <script src="lib/oidc-client-ts/oidc-client-ts.min.js"></script>
+    <script type="module">
+        import { userManager } from './js/auth.js';
+        userManager.signinRedirectCallback()
+            .then(() => location.replace('/#/inbox'))
+            .catch((err) => {
+                document.getElementById('status').textContent = 'Aanmelden mislukt: ' + err;
+            });
+    </script>
+</body>
+</html>

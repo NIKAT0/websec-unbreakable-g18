@@ -1,6 +1,7 @@
 // De schermen van Unbreakable. Navigeren gebeurt met het deel na # in de URL.
 
-import { api, currentUser, setUser } from './api.js';
+import { api } from './api.js';
+import { currentUser, login, logout, loadUser } from './auth.js';
 import { normaliseer, controleer, otp, macData, maakMac, controleerMac } from './crypto.js';
 
 const app = document.getElementById('app');
@@ -22,9 +23,17 @@ function formatDate(value) {
 
 function showWho() {
     const user = currentUser();
-    document.getElementById('who').innerHTML = user
-        ? `Je bent <strong>${escapeHtml(user)}</strong> (<a href="#/">wisselen</a>)`
+    const who = document.getElementById('who');
+    who.innerHTML = user
+        ? `Je bent <strong>${escapeHtml(user)}</strong> (<a href="#" id="afmelden">afmelden</a>)`
         : '';
+    const link = document.getElementById('afmelden');
+    if (link) {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            logout();
+        });
+    }
 }
 
 // ------------------------------------------------------------------ naam kiezen
@@ -37,26 +46,24 @@ function renderLogin() {
             <p class="lead">Berichten die niemand anders kan lezen. Dat is toch de bedoeling.</p>
         </div>
         <div class="row justify-content-center">
-            <div class="col-md-5">
-                ${user ? `<p>Je gebruikt Unbreakable als <strong>${escapeHtml(user)}</strong>.
-                          <a href="#/inbox">Naar je inbox</a></p>
-                          <p>Iemand anders? Vul hieronder een andere naam in.</p>` : ''}
-                <form id="login">
-                    <div class="form-group">
-                        <label for="name">Wie ben je?</label>
-                        <input id="name" class="form-control" placeholder="bijvoorbeeld Anna"
-                               required minlength="2" maxlength="40" />
-                    </div>
-                    <button type="submit" class="btn btn-primary">Verder</button>
-                </form>
+            <div class="col-md-5 text-center">
+                ${user
+                    ? `<p>Je bent aangemeld als <strong>${escapeHtml(user)}</strong>.</p>
+                       <a href="#/inbox" class="btn btn-primary">Naar je inbox</a>
+                       <button id="logout" class="btn btn-outline-secondary">Afmelden</button>`
+                    : `<p>Meld je aan met je account om je berichten te lezen.</p>
+                       <button id="login" class="btn btn-primary btn-lg">Aanmelden</button>`}
             </div>
         </div>`;
 
-    document.getElementById('login').addEventListener('submit', (event) => {
-        event.preventDefault();
-        setUser(document.getElementById('name').value.trim());
-        location.hash = '#/inbox';
-    });
+    const loginBtn = document.getElementById('login');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => login());
+    }
+    const logoutBtn = document.getElementById('logout');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => logout());
+    }
 }
 
 // ------------------------------------------------------------------ inbox
@@ -309,4 +316,4 @@ async function route() {
 }
 
 window.addEventListener('hashchange', route);
-route();
+loadUser().then(route);

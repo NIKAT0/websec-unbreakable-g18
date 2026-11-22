@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
+using System.Security.Claims;
 using Unbreakable.Data;
 using Unbreakable.Models;
 
@@ -10,6 +13,28 @@ builder.Services.AddDbContext<UnbreakableContext>(options =>
 
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+
+// Authenticatie: de API vertrouwt enkel een geldig JWT van onze Keycloak-realm.
+// De metadata en de sleutels worden INTERN opgehaald (keycloak:8080), niet via de WAF.
+// Keycloak draait met hostname-backchannel-dynamic, dus de jwks_uri is intern terwijl
+// de issuer de publieke URL blijft (die in het token staat).
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MetadataAddress = "http://keycloak:8080/auth/realms/unbreakable/.well-known/openid-configuration";
+        options.RequireHttpsMetadata = false; // interne backchannel over http binnen het Docker-netwerk
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = "https://g18.ipv6.thelastgym.be/auth/realms/unbreakable",
+            ValidateAudience = true,
+            ValidAudience = "unbreakable-api",
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            NameClaimType = "preferred_username",
+        };
+    });
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -37,6 +62,8 @@ using (var scope = app.Services.CreateScope())
 
 app.UseDeveloperExceptionPage();
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // De SPA: index.html, JavaScript en CSS uit wwwroot.
 app.UseDefaultFiles();
@@ -44,8 +71,9 @@ app.UseStaticFiles();
 
 app.MapGet("/health", () => "ok");
 
-// De API. Wie je bent, staat voorlopig in de header X-User.
-var api = app.MapGroup("/api");
+// De API. Wie je bent, komt uit het geverifieerde token (claim preferred_username),
+// niet langer uit een header. Elke endpoint vereist een geldig token.
+var api = app.MapGroup("/api").RequireAuthorization();
 
 api.MapGet("/users", async (UnbreakableContext db) =>
 {
@@ -54,13 +82,9 @@ api.MapGet("/users", async (UnbreakableContext db) =>
     return Results.Ok(senders.Union(recipients).OrderBy(name => name).ToList());
 });
 
-api.MapGet("/messages", async (HttpRequest request, UnbreakableContext db) =>
+api.MapGet("/messages", async (HttpRequest request, ClaimsPrincipal principal, UnbreakableContext db) =>
 {
-    var user = CurrentUser(request);
-    if (string.IsNullOrEmpty(user))
-    {
-        return Results.Unauthorized();
-    }
+    var user = CurrentUser(principal);
 
     var inbox = db.Messages.Where(m => m.Recipient == user);
 
@@ -73,13 +97,9 @@ api.MapGet("/messages", async (HttpRequest request, UnbreakableContext db) =>
     return Results.Ok(await inbox.OrderByDescending(m => m.SentAt).ToListAsync());
 });
 
-api.MapGet("/messages/search", async (HttpRequest request, UnbreakableContext db) =>
+api.MapGet("/messages/search", async (HttpRequest request, ClaimsPrincipal principal, UnbreakableContext db) =>
 {
-    var user = CurrentUser(request);
-    if (string.IsNullOrEmpty(user))
-    {
-        return Results.Unauthorized();
-    }
+    var user = CurrentUser(principal);
 
     var q = request.Query["q"].ToString();
     var sql = "SELECT * FROM \"Messages\" WHERE \"Recipient\" = '" + user + "' " +
@@ -89,13 +109,9 @@ api.MapGet("/messages/search", async (HttpRequest request, UnbreakableContext db
     return Results.Ok(messages);
 });
 
-api.MapGet("/messages/export", async (HttpRequest request, UnbreakableContext db) =>
+api.MapGet("/messages/export", async (ClaimsPrincipal principal, UnbreakableContext db) =>
 {
-    var user = CurrentUser(request);
-    if (string.IsNullOrEmpty(user))
-    {
-        return Results.Unauthorized();
-    }
+    var user = CurrentUser(principal);
 
     var messages = await db.Messages
         .Where(m => m.Recipient == user)
@@ -111,13 +127,10 @@ api.MapGet("/messages/{id:int}", async (int id, UnbreakableContext db) =>
     return message == null ? Results.NotFound() : Results.Ok(message);
 });
 
-api.MapPost("/messages", async (Message message, HttpRequest request, UnbreakableContext db) =>
+api.MapPost("/messages", async (Message message, ClaimsPrincipal principal, UnbreakableContext db) =>
 {
-    // Geen afzender meegegeven? Dan nemen we wie je bent.
-    if (string.IsNullOrEmpty(message.Sender))
-    {
-        message.Sender = CurrentUser(request);
-    }
+    // De afzender komt altijd uit het token, niet uit de invoer: je kan je niet voordoen als iemand anders.
+    message.Sender = CurrentUser(principal);
 
     message.Id = 0;
     message.SentAt = DateTime.UtcNow;
@@ -143,7 +156,8 @@ api.MapDelete("/messages/{id:int}", async (int id, UnbreakableContext db) =>
 
 app.Run();
 
-static string CurrentUser(HttpRequest request)
+// De naam van de ingelogde gebruiker, uit het geverifieerde token.
+static string CurrentUser(ClaimsPrincipal principal)
 {
-    return request.Headers["X-User"].ToString();
+    return principal.FindFirst("preferred_username")?.Value ?? principal.Identity?.Name;
 }
