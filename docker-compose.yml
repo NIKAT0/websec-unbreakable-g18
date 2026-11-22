@@ -17,6 +17,7 @@ services:
     networks:
       - bw-services
       - app-db
+      - app-openfga
 
   db:
     image: postgres:17
@@ -74,6 +75,48 @@ services:
     networks:
       - keycloak-net
 
+  # Policy Decision Point (PDP): OpenFGA (ReBAC, op basis van Google Zanzibar).
+  # Intern, enkel bereikbaar voor de app (PEP) via het netwerk app-openfga.
+  openfga:
+    image: openfga/openfga:v1.8.0
+    command: run
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: "postgres://openfga:0p3nFGA!2026@openfga-db:5432/openfga?sslmode=disable"
+      OPENFGA_LOG_LEVEL: warn
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - openfga-net
+      - app-openfga
+
+  # Eenmalige databankmigratie voor OpenFGA (maakt de tabellen aan).
+  openfga-migrate:
+    image: openfga/openfga:v1.8.0
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: "postgres://openfga:0p3nFGA!2026@openfga-db:5432/openfga?sslmode=disable"
+    depends_on:
+      - openfga-db
+    restart: "no"
+    networks:
+      - openfga-net
+
+  openfga-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: openfga
+      POSTGRES_USER: openfga
+      POSTGRES_PASSWORD: "0p3nFGA!2026"
+    volumes:
+      - openfgadbdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - openfga-net
+
   bunkerweb:
     image: bunkerity/bunkerweb:1.6.15@sha256:1b96f672660cc32bfae93604ac297371222dc9039b2b09b8eee5e40ba9d35c35
     ports:
@@ -118,6 +161,7 @@ services:
 volumes:
   dbdata:
   kcdbdata:
+  openfgadbdata:
   bw-storage:
 
 networks:
@@ -126,6 +170,12 @@ networks:
     internal: true
   # Keycloak en zijn databank, intern
   keycloak-net:
+    internal: true
+  # OpenFGA en zijn eigen databank, intern
+  openfga-net:
+    internal: true
+  # Enkel de app (PEP) bereikt de PDP; intern, geen internet
+  app-openfga:
     internal: true
   bw-universe:
     ipam:
