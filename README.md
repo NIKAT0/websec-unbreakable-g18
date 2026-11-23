@@ -13,6 +13,7 @@ Je hebt enkel Docker nodig, met de compose plugin.
 ```bash
 git clone <jouw repo>
 cd <jouw repo>
+cp .env.example .env    # en vul eigen wachtwoorden in (.env komt nooit in git)
 docker compose up -d --build
 ```
 
@@ -53,7 +54,7 @@ docs/threat-model.md        basis threat model van de starter app
 | DELETE | `/api/messages/{id}` | bericht verwijderen |
 | GET | `/api/messages/export` | je inbox als JSON |
 
-Wie je bent, stuurt de SPA mee in de header `X-User`.
+~~Wie je bent, stuurt de SPA mee in de header `X-User`.~~ Sinds opdracht 4: wie je bent, komt uit het token van Keycloak (OIDC); wat je mag, beslist OpenFGA.
 
 Technologie: ASP.NET Core minimal API op .NET 10, Entity Framework Core met PostgreSQL 17, en vanilla JavaScript met Bootstrap, zonder build stap.
 

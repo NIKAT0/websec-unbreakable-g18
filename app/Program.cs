@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 using OpenFga.Sdk.Client;
 using OpenFga.Sdk.Client.Model;
+using OpenFga.Sdk.Configuration;
 using System.Security.Claims;
 using Unbreakable;
 using Unbreakable.Data;
@@ -13,9 +14,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<UnbreakableContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Unbreakable")));
-
-builder.Services.AddCors(options =>
-    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
 // Authenticatie: de API vertrouwt enkel een geldig JWT van onze Keycloak-realm.
 // De metadata en de sleutels worden INTERN opgehaald (keycloak:8080), niet via de WAF.
@@ -34,6 +32,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = "unbreakable-api",
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+            // Standaard aanvaardt .NET een token nog 5 minuten na exp; 30 seconden volstaat.
+            ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = "preferred_username",
         };
     });
@@ -41,11 +41,17 @@ builder.Services.AddAuthorization();
 
 // De PDP (OpenFGA). De API is de PEP: ze stelt enkel de vraag, OpenFGA beslist.
 // Adres, store en model komen uit de omgeving (docker-compose), niet hardcoded.
+// OpenFGA aanvaardt enkel vragen met de gedeelde sleutel (uit .env op de server, niet in git).
 builder.Services.AddSingleton(new OpenFgaClient(new ClientConfiguration
 {
     ApiUrl = builder.Configuration["OpenFga:ApiUrl"] ?? "http://openfga:8080",
     StoreId = builder.Configuration["OpenFga:StoreId"],
     AuthorizationModelId = builder.Configuration["OpenFga:ModelId"],
+    Credentials = new Credentials
+    {
+        Method = CredentialsMethod.ApiToken,
+        Config = new CredentialsConfig { ApiToken = builder.Configuration["OpenFga:ApiToken"] },
+    },
 }));
 
 var app = builder.Build();
@@ -88,8 +94,12 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseDeveloperExceptionPage();
-app.UseCors();
+// Stacktraces enkel lokaal tijdens het ontwikkelen, niet op de server.
+// Geen CORS: de SPA en de API draaien op hetzelfde domein, andere sites hebben niets te zoeken.
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -133,12 +143,15 @@ api.MapGet("/messages/search", async (HttpRequest request, ClaimsPrincipal princ
 
     // Welke berichten je mag zien, komt van de PDP (geen "Recipient = user" meer in de query).
     var leesbaar = await Authz.LeesbareBerichtIds(fga, CurrentUser(principal));
-    var inClause = leesbaar.Count > 0 ? string.Join(",", leesbaar) : "-1";
 
-    var sql = "SELECT * FROM \"Messages\" WHERE \"Id\" IN (" + inClause + ") " +
-              "AND (\"Subject\" ILIKE '%" + q + "%' OR \"Body\" ILIKE '%" + q + "%')";
-
-    var messages = await db.Messages.FromSqlRaw(sql).OrderByDescending(m => m.SentAt).ToListAsync();
+    // Zoekterm als parameter (EF Core), niet meer in de SQL-tekst geplakt: geen SQL-injectie,
+    // en dus ook geen manier om via de zoekbalk om de PDP heen te lezen.
+    var patroon = "%" + q + "%";
+    var messages = await db.Messages
+        .Where(m => leesbaar.Contains(m.Id))
+        .Where(m => EF.Functions.ILike(m.Subject, patroon) || EF.Functions.ILike(m.Body, patroon))
+        .OrderByDescending(m => m.SentAt)
+        .ToListAsync();
     return Results.Ok(messages);
 });
 

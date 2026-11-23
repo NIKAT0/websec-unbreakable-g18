@@ -7,8 +7,14 @@ set -e
 cd "$(dirname "$0")"
 
 NET=websec-unbreakable-g18_app-openfga
+# OpenFGA vraagt de gedeelde sleutel (OPENFGA_KEY uit ../.env). Via een bestand, niet op de opdrachtregel.
+KEY=$(grep '^OPENFGA_KEY=' ../.env | cut -d= -f2-)
+[ -n "$KEY" ] || { echo "OPENFGA_KEY ontbreekt in .env"; exit 1; }
+HDR=$(mktemp); trap 'rm -f "$HDR"' EXIT
+printf 'Authorization: Bearer %s\n' "$KEY" > "$HDR"
 fga() {
-  docker run --rm --network "$NET" -v "$PWD:/w:ro" curlimages/curl:8.11.1 -s "$@"
+  # -u 0: het sleutelbestand is enkel leesbaar voor root
+  docker run --rm -u 0 --network "$NET" -v "$PWD:/w:ro" -v "$HDR:/h:ro" curlimages/curl:8.11.1 -s -H @/h "$@"
 }
 
 STORE=$(fga -X POST http://openfga:8080/stores \

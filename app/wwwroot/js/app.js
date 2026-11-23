@@ -110,7 +110,8 @@ async function renderInbox(params) {
         <div id="sent"></div>`;
 
     if (q) {
-        window.jQuery('#searched').html('Je zocht naar: ' + q);
+        // .text() i.p.v. .html(): de zoekterm wordt getoond, nooit als HTML uitgevoerd (XSS).
+        window.jQuery('#searched').text('Je zocht naar: ' + q);
     }
 
     const rows = messages.map(m => `

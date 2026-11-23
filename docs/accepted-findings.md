@@ -21,8 +21,9 @@ Deze bevindingen laten de pipeline niet meer falen. Elke **nieuwe** kritieke bev
 | 1 | Gitleaks | API-sleutel `ubk_live_…` in `app/appsettings.json:15` | echt patroon (geheim in code), maar de sleutel zelf is nep | het endpoint `push.unbreakable.example` bestaat niet (`.example` is gereserveerd), dus de sleutel geeft nergens toegang | opdracht 6 (geheimenbeheer) | `.gitleaksignore` |
 | 2 | Trivy | `Newtonsoft.Json 12.0.1`, CVE-2024-21907 (HIGH) | echt lek in de bibliotheek, niet bereikbaar in de app | het lek zit in het **inlezen** van diep geneste JSON; de app gebruikt Newtonsoft enkel om eigen data te **schrijven** (export) | update naar 13.0.1 of hoger; aanvaard tot 31/12/2026 | `.trivyignore` |
 | 3 | Semgrep | container draait als root (`app/Dockerfile`) | echt | de app staat niet open naar buiten (enkel 127.0.0.1) en bevat enkel testdata | threat model, dreiging 14 (non-root) | `.semgrep-accepted` |
-| 4 | CodeQL | SQL-injectie in de zoekfunctie (`Program.cs`, `FromSqlRaw`) | echt | bewuste zwakke plek van de starter app; nodig als testdoel voor de WAF (stap 5) | geparametriseerde query (threat model) | `.codeql-accepted` |
-| 5 | CodeQL | XSS (`js/xss`): zoekterm via jQuery `.html()` (`app.js`) | echt | bewuste zwakke plek; nodig als testdoel voor de WAF (stap 5) | `.text()` + Content-Security-Policy (opdracht 3) | `.codeql-accepted` |
+| 4 | CodeQL | SQL-injectie in de zoekfunctie (`Program.cs`, `FromSqlRaw`) | echt | bewuste zwakke plek van de starter app; nodig als testdoel voor de WAF (stap 5) | ✅ **opgelost in opdracht 4**: zoekterm als parameter (`EF.Functions.ILike`) | niet meer aanvaard |
+| 5 | CodeQL | XSS (`js/xss`): zoekterm via jQuery `.html()` (`app.js`) | echt | bewuste zwakke plek; nodig als testdoel voor de WAF (stap 5) | ✅ **opgelost in opdracht 4**: `.text()`; Content-Security-Policy nog niet | niet meer aanvaard |
+| 6 | Gitleaks | Keycloak-wachtwoord in `docker-compose.yml` (commit `d283348`, opdracht 4 stap 1) | echt, en echt gelekt (staat op GitHub) | het wachtwoord is op 23/11 vervangen en het oude wordt geweigerd; geheimen staan nu in `.env` buiten git. De geschiedenis herschrijven helpt niet meer: ze is al publiek | opdracht 4 (vervangen + `.env`) | `.gitleaksignore` |
 
 ## Gemeld, maar niet kritiek (blokkeert niet)
 
@@ -30,11 +31,11 @@ Deze bevindingen laten de pipeline niet meer falen. Elke **nieuwe** kritieke bev
 |---|---|---|
 | retire.js | jQuery 3.3.1 (CVE-2019-11358, CVE-2020-11022, CVE-2020-11023) | MEDIUM |
 | retire.js | Bootstrap 4.1.3 (CVE-2019-8331) | MEDIUM |
-| Semgrep (enkel lokaal; de pipeline toont enkel ERROR) | `UseDeveloperExceptionPage()`: stacktrace zichtbaar voor iedereen (`Program.cs`) | WARNING |
+| Semgrep (enkel lokaal; de pipeline toont enkel ERROR) | `UseDeveloperExceptionPage()`: stacktrace zichtbaar voor iedereen (`Program.cs`). ✅ Opdracht 4: enkel nog in Development | WARNING |
 
 ## Wat de scans missen
 
 - **Semgrep** vindt de SQL-injectie en de XSS niet, met geen enkele ruleset. **CodeQL** vindt ze wel (run #3); daarom zijn er twee SAST-tools.
-- **Gitleaks** vindt het databankwachtwoord in `appsettings.json` en `docker-compose.yml` niet (geen herkenbaar patroon).
+- **Gitleaks** vindt het databankwachtwoord in `appsettings.json` en `docker-compose.yml` niet (geen herkenbaar patroon). Sinds opdracht 4 staan de wachtwoorden in `.env` op de server (niet in git) en zijn ze vervangen: de oude uit de git-geschiedenis werken niet meer.
 
 Een groene pipeline betekent dus niet dat de code veilig is.

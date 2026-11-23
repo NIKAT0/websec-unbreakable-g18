@@ -1,2 +1,3 @@
 # Aanvaarde geheimen: de Fingerprint uit het Gitleaks-rapport, reden in docs/accepted-findings.md
 535edee8509ec7b51645570115565d69e79f36c9:app/appsettings.json:generic-api-key:15
+d283348fdfbc1438a8c4cfa31fd7ca3716d2e72a:docker-compose.yml:generic-api-key:40
