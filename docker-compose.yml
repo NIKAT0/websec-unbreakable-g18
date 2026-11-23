@@ -46,9 +46,6 @@ services:
       KC_DB_URL: "jdbc:postgresql://keycloak-db:5432/keycloak"
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: "K3ycl0ak!2026"
-      # Eerste beheerder (enkel voor de setup; login gebeurt via de realm)
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: "Adm1n!Keycloak2026"
       # Achter BunkerWeb: TLS termineert op de WAF, Keycloak draait op subpad /auth
       KC_HOSTNAME: "https://g18.ipv6.thelastgym.be/auth"
       KC_HTTP_RELATIVE_PATH: /auth
@@ -151,6 +148,9 @@ services:
       # Tweede reverse proxy: /auth naar Keycloak (zelfde pad als KC_HTTP_RELATIVE_PATH)
       REVERSE_PROXY_HOST_1: "http://keycloak:8080"
       REVERSE_PROXY_URL_1: "/auth"
+      # De adminconsole, de admin-API en de master-realm van Keycloak zijn niet publiek.
+      # Beheer gebeurt op g18 zelf (docker exec ... kcadm.sh). Enkel de realm unbreakable blijft open.
+      BLACKLIST_URI: "^/auth/admin ^/auth/realms/master"
       # HTTPS via Let's Encrypt: eerst staging (gedeelde limiet), daarna "no"
       AUTO_LETS_ENCRYPT: "yes"
       USE_LETS_ENCRYPT_STAGING: "no"
