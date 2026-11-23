@@ -110,12 +110,14 @@ api.MapGet("/users", async (UnbreakableContext db) =>
     return Results.Ok(senders.Union(recipients).OrderBy(name => name).ToList());
 });
 
-api.MapGet("/messages", async (HttpRequest request, ClaimsPrincipal principal, UnbreakableContext db) =>
+api.MapGet("/messages", async (HttpRequest request, ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
-    var user = CurrentUser(principal);
+    // De PDP bepaalt welke berichten je mag zien (ListObjects op can_read);
+    // de code filtert niet meer zelf op ontvanger.
+    var leesbaar = await Authz.LeesbareBerichtIds(fga, CurrentUser(principal));
+    var inbox = db.Messages.Where(m => leesbaar.Contains(m.Id));
 
-    var inbox = db.Messages.Where(m => m.Recipient == user);
-
+    // Filter op afzender is een weergavekeuze (businessregel), geen autorisatie.
     var from = request.Query["from"].ToString();
     if (!string.IsNullOrEmpty(from))
     {
@@ -125,24 +127,28 @@ api.MapGet("/messages", async (HttpRequest request, ClaimsPrincipal principal, U
     return Results.Ok(await inbox.OrderByDescending(m => m.SentAt).ToListAsync());
 });
 
-api.MapGet("/messages/search", async (HttpRequest request, ClaimsPrincipal principal, UnbreakableContext db) =>
+api.MapGet("/messages/search", async (HttpRequest request, ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
-    var user = CurrentUser(principal);
-
     var q = request.Query["q"].ToString();
-    var sql = "SELECT * FROM \"Messages\" WHERE \"Recipient\" = '" + user + "' " +
+
+    // Welke berichten je mag zien, komt van de PDP (geen "Recipient = user" meer in de query).
+    var leesbaar = await Authz.LeesbareBerichtIds(fga, CurrentUser(principal));
+    var inClause = leesbaar.Count > 0 ? string.Join(",", leesbaar) : "-1";
+
+    var sql = "SELECT * FROM \"Messages\" WHERE \"Id\" IN (" + inClause + ") " +
               "AND (\"Subject\" ILIKE '%" + q + "%' OR \"Body\" ILIKE '%" + q + "%')";
 
     var messages = await db.Messages.FromSqlRaw(sql).OrderByDescending(m => m.SentAt).ToListAsync();
     return Results.Ok(messages);
 });
 
-api.MapGet("/messages/export", async (ClaimsPrincipal principal, UnbreakableContext db) =>
+api.MapGet("/messages/export", async (ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
-    var user = CurrentUser(principal);
+    // Ook de export toont enkel wat de PDP toelaat.
+    var leesbaar = await Authz.LeesbareBerichtIds(fga, CurrentUser(principal));
 
     var messages = await db.Messages
-        .Where(m => m.Recipient == user)
+        .Where(m => leesbaar.Contains(m.Id))
         .OrderBy(m => m.SentAt)
         .ToListAsync();
 

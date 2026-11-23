@@ -20,6 +20,29 @@ public static class Authz
         return antwoord.Allowed ?? false;
     }
 
+    // Welke berichten mag deze gebruiker lezen? De PDP geeft de lijst (ListObjects op can_read).
+    // Zo filtert de API inbox/zoeken/export niet meer zelf op ontvanger.
+    public static async Task<List<int>> LeesbareBerichtIds(OpenFgaClient fga, string user)
+    {
+        var antwoord = await fga.ListObjects(new ClientListObjectsRequest
+        {
+            User = $"user:{user}",
+            Relation = "can_read",
+            Type = "message",
+        });
+
+        var ids = new List<int>();
+        foreach (var obj in antwoord.Objects ?? new List<string>())
+        {
+            var deel = obj.Split(':');
+            if (deel.Length == 2 && int.TryParse(deel[1], out var id))
+            {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
+
     // De relatie afzender/ontvanger ↔ bericht als tuples wegschrijven.
     public static async Task SchrijfTuples(OpenFgaClient fga, Message m)
     {

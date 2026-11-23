@@ -14,7 +14,7 @@ services:
       # De PDP (OpenFGA): adres, store en model. De app is enkel PEP.
       OpenFga__ApiUrl: "http://openfga:8080"
       OpenFga__StoreId: "01M82QE9KT7D57EBDDHJM4CGE3"
-      OpenFga__ModelId: "01M82QFKCVNJJZKGKT6SFTG1HR"
+      OpenFga__ModelId: "01M82WY73NHANXGN41SCHZNW2K"
     depends_on:
       - db
       - openfga
