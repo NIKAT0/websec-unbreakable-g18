@@ -74,6 +74,7 @@ async function renderInbox(params) {
     const from = params.get('from') || '';
 
     const all = await api.inbox();
+    const sent = await api.sent();
     const senders = [...new Set(all.map(m => m.sender))].sort();
     const found = q ? await api.search(q) : all;
     const messages = found.filter(m => !from || m.sender === from);
@@ -103,7 +104,10 @@ async function renderInbox(params) {
             </div>
         </form>
         <p id="searched"></p>
-        <div id="list"></div>`;
+        <div id="list"></div>
+        <h2 class="h4 mt-5">Verzonden</h2>
+        <p class="text-muted">Je ziet niet wat erin staat (lezen mag enkel de ontvanger), maar je kan het wel verwijderen.</p>
+        <div id="sent"></div>`;
 
     if (q) {
         window.jQuery('#searched').html('Je zocht naar: ' + q);
@@ -122,6 +126,35 @@ async function renderInbox(params) {
                <tbody>${rows}</tbody>
            </table>`
         : '<p class="text-muted">Geen berichten.</p>';
+
+    const sentRows = sent.map(m => `
+        <tr>
+            <td>${escapeHtml(m.recipient)}</td>
+            <td>${escapeHtml(m.subject)}</td>
+            <td>${formatDate(m.sentAt)}</td>
+            <td><button class="btn btn-sm btn-outline-danger" data-delete="${Number(m.id)}">Verwijderen</button></td>
+        </tr>`).join('');
+
+    document.getElementById('sent').innerHTML = sent.length
+        ? `<table class="table">
+               <thead><tr><th>Aan</th><th>Onderwerp</th><th>Verzonden</th><th></th></tr></thead>
+               <tbody>${sentRows}</tbody>
+           </table>`
+        : '<p class="text-muted">Nog niets verzonden.</p>';
+
+    document.querySelectorAll('[data-delete]').forEach(button => {
+        button.addEventListener('click', async () => {
+            if (!confirm('Ben je zeker dat je dit bericht wil verwijderen?')) {
+                return;
+            }
+            try {
+                await api.remove(button.dataset.delete);
+                route();
+            } catch (error) {
+                alert('Verwijderen lukt niet: ' + error.message);
+            }
+        });
+    });
 
     document.getElementById('filter').addEventListener('submit', (event) => {
         event.preventDefault();
@@ -193,8 +226,13 @@ async function renderMessage(id) {
 
     document.getElementById('delete').addEventListener('click', async () => {
         if (confirm('Ben je zeker dat je dit bericht wil verwijderen?')) {
-            await api.remove(id);
-            location.hash = '#/inbox';
+            try {
+                await api.remove(id);
+                location.hash = '#/inbox';
+            } catch (error) {
+                // De PDP weigert: enkel de afzender mag verwijderen (403).
+                alert('Verwijderen mag niet: enkel de afzender kan dit bericht verwijderen. (' + error.message + ')');
+            }
         }
     });
 }

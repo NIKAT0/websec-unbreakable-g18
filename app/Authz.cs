@@ -22,12 +22,23 @@ public static class Authz
 
     // Welke berichten mag deze gebruiker lezen? De PDP geeft de lijst (ListObjects op can_read).
     // Zo filtert de API inbox/zoeken/export niet meer zelf op ontvanger.
-    public static async Task<List<int>> LeesbareBerichtIds(OpenFgaClient fga, string user)
+    public static Task<List<int>> LeesbareBerichtIds(OpenFgaClient fga, string user)
+    {
+        return BerichtIds(fga, user, "can_read");
+    }
+
+    // Welke berichten mag deze gebruiker verwijderen? (ListObjects op can_delete)
+    public static Task<List<int>> VerwijderbareBerichtIds(OpenFgaClient fga, string user)
+    {
+        return BerichtIds(fga, user, "can_delete");
+    }
+
+    private static async Task<List<int>> BerichtIds(OpenFgaClient fga, string user, string relation)
     {
         var antwoord = await fga.ListObjects(new ClientListObjectsRequest
         {
             User = $"user:{user}",
-            Relation = "can_read",
+            Relation = relation,
             Type = "message",
         });
 

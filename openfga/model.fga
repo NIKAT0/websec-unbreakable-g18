@@ -1,0 +1,14 @@
+model
+  schema 1.1
+
+# Enkel de ontvanger leest een bericht, enkel de afzender verwijdert het.
+# De relaties sender en recipient schrijft de API weg bij elk nieuw bericht.
+
+type user
+
+type message
+  relations
+    define sender: [user]
+    define recipient: [user]
+    define can_read: recipient
+    define can_delete: sender

@@ -155,6 +155,21 @@ api.MapGet("/messages/export", async (ClaimsPrincipal principal, OpenFgaClient f
     return Results.Text(JsonConvert.SerializeObject(messages, Formatting.Indented), "application/json");
 });
 
+// Verzonden berichten: enkel die je mag verwijderen (can_delete, dus de afzender).
+// Zonder de inhoud, want lezen mag enkel de ontvanger. Zo kan de afzender zijn bericht terugvinden en verwijderen.
+api.MapGet("/messages/sent", async (ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
+{
+    var verwijderbaar = await Authz.VerwijderbareBerichtIds(fga, CurrentUser(principal));
+
+    var sent = await db.Messages
+        .Where(m => verwijderbaar.Contains(m.Id))
+        .OrderByDescending(m => m.SentAt)
+        .Select(m => new { m.Id, m.Recipient, m.Subject, m.SentAt })
+        .ToListAsync();
+
+    return Results.Ok(sent);
+});
+
 api.MapGet("/messages/{id:int}", async (int id, ClaimsPrincipal principal, OpenFgaClient fga, UnbreakableContext db) =>
 {
     var message = await db.Messages.FindAsync(id);

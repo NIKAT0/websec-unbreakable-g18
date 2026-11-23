@@ -32,6 +32,7 @@ export const api = {
     inbox: (from) => call('GET', '/messages' + (from ? '?from=' + encodeURIComponent(from) : '')),
     search: (q) => call('GET', '/messages/search?q=' + encodeURIComponent(q)),
     message: (id) => call('GET', '/messages/' + id),
+    sent: () => call('GET', '/messages/sent'),
     send: (message) => call('POST', '/messages', message),
     remove: (id) => call('DELETE', '/messages/' + id),
     exportJson: () => call('GET', '/messages/export'),
